@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>I LOVE YOU SO MUCH</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      user-select: none;
+    }
+
+    body {
+      background: radial-gradient(circle at center, #0a0a1a 0%, #000000 100%);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-family: 'Segoe UI', 'Arial', system-ui, -apple-system, sans-serif;
+      overflow: hidden;
+      cursor: default;
+    }
+
+    /* subtle ambient noise / shimmer overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle at 50% 50%, rgba(255,80,120,0.02) 0%, transparent 80%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container {
+      position: relative;
+      width: 700px;
+      height: 700px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      filter: drop-shadow(0 0 15px rgba(255, 30, 100, 0.3));
+    }
+
+    /* each word gets elegant typography with smooth transitions */
+    .word {
+      position: absolute;
+      color: #ff6b9d;
+      font-size: 18px;
+      font-weight: 500;
+      font-family: 'Segoe UI', 'Arial', sans-serif;
+      letter-spacing: 0.5px;
+      white-space: nowrap;
+      will-change: transform, opacity, text-shadow;
+      transition: opacity 0.03s linear, transform 0.05s ease-out, text-shadow 0.03s ease-out;
+      pointer-events: none;
+      backface-visibility: hidden;
+      text-rendering: geometricPrecision;
+    }
+
+    /* romantic heartbeat pulse on the whole scene occasionally (optional extra feeling) */
+    @keyframes softHeartbeat {
+      0% { filter: drop-shadow(0 0 5px rgba(255,80,140,0.3)); }
+      50% { filter: drop-shadow(0 0 20px rgba(255,50,120,0.6)); }
+      100% { filter: drop-shadow(0 0 5px rgba(255,80,140,0.3)); }
+    }
+
+    .container {
+      animation: softHeartbeat 3.2s infinite ease-in-out;
+    }
+  </style>
+</head>
+<body>
+<div class="container" id="heartCanvas"></div>
+
+<script>
+  (function() {
+    const container = document.getElementById("heartCanvas");
+    const LOVE_TEXT = "I love you";
+    const TOTAL_POINTS = 150;        // more particles = smoother flow, richer appearance
+    let glowFlow = 0;                 // phase offset for traveling glow
+    let elementsList = [];
+
+    // ---------- Heart shape formulas (scaled + centered) ----------
+    // Parametric heart: x = 16 * sin(t)^3 , y = 13cos(t) - 5 cos(2t) - 2cos(3t) - cos(4t)
+    // Classic "Valentine" heart, beautiful curvature
+    function heartXParam(t) {
+      return 16 * Math.pow(Math.sin(t), 3);
+    }
+
+    function heartYParam(t) {
+      return 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+    }
+
+    // scale factor to make heart fill canvas beautifully, and center it
+    const SCALE = 14.5;          // elegant size (not too big, not tiny)
+    const CENTER_X = 350;        // half of 700px container
+    const CENTER_Y = 350;
+
+    // precompute final positions for all points based on parameter t (0 to 4*PI)
+    // This covers full heart contour twice, making flow continuous around the heart.
+    for (let idx = 0; idx < TOTAL_POINTS; idx++) {
+      // t ranges from 0 to 2*PI * 2 = 4*PI (full heart loop twice)
+      // this ensures we have smooth cyclic behavior across whole shape
+      let t = (idx / TOTAL_POINTS) * (Math.PI * 4);
+      
+      let rawX = heartXParam(t);
+      let rawY = heartYParam(t);
+      
+      // Y is flipped because canvas Y goes downwards, but heart formula designed with Y positive up.
+      // In standard graph, positive Y goes up; to display correct orientation, we invert Y.
+      let finalX = rawX * SCALE + CENTER_X;
+      let finalY = -rawY * SCALE + CENTER_Y;   // negative to flip upright heart
+      
+      // Create DOM element
+      let wordDiv = document.createElement("div");
+      wordDiv.className = "word";
+      wordDiv.innerText = LOVE_TEXT;
+      // Set positions as absolute
+      wordDiv.style.left = finalX + "px";
+      wordDiv.style.top = finalY + "px";
+      wordDiv.style.opacity = "0";
+      wordDiv.style.textShadow = "0 0 0px rgba(255, 50, 120, 0)";
+      wordDiv.style.transform = "translate(-50%, -50%) scale(0.9)";
+      
+      container.appendChild(wordDiv);
+      
+      // store element and its parametric angle for glow wave calculations
+      elementsList.push({
+        el: wordDiv,
+        angle: t,                // original parameter t (0 .. 4*PI)
+        baseX: finalX,
+        baseY: finalY
+      });
+    }
+
+    // ----- Enhanced glow mapping with pure cosine falloff - completely smooth disappearance -----
+    function computeIntensity(phaseAngle, flowOffset) {
+  let modAngle = phaseAngle % (Math.PI * 2);
+  let flowNorm = flowOffset % (Math.PI * 2);
+  
+  let delta = Math.abs(modAngle - flowNorm);
+  let angularDist = Math.min(delta, (Math.PI * 2) - delta);
+  
+  let glowWidth = 1.4;  // tighter for clear separation between two waves
+  
+  // FIRST WAVE
+  let intensity1 = 0;
+  if (angularDist < glowWidth) {
+    let tNorm = angularDist / glowWidth;
+    intensity1 = 1 - tNorm;  // linear fade to zero
+  }
+  
+  // SECOND WAVE - opposite side of the heart (shifted by PI radians)
+  let secondFlow = (flowOffset + Math.PI) % (Math.PI * 2);
+  let delta2 = Math.abs(modAngle - secondFlow);
+  let angularDist2 = Math.min(delta2, (Math.PI * 2) - delta2);
+  
+  let intensity2 = 0;
+  if (angularDist2 < glowWidth) {
+    let tNorm2 = angularDist2 / glowWidth;
+    intensity2 = 1 - tNorm2;  // linear fade to zero
+  }
+  
+  // Combine both waves - take the maximum so both are visible
+  let intensity = Math.max(intensity1, intensity2);
+  
+  return Math.max(0, Math.min(1, intensity));
+}
+    
+    // global pulse for subtle micro-animation
+    let globalPulse = 0;
+    
+    // ---------- Animation loop (super smooth, requestFrame optimized) ----------
+    const FLOW_SPEED = 0.013;      // elegantly slow, like a slow breath (romantic)
+    
+    function animate(currentTime) {
+      // advance flow phase continuously (like light wave traveling around heart)
+      glowFlow += FLOW_SPEED;
+      // keep it in a manageable range (avoid large numbers)
+      if (glowFlow > Math.PI * 2) glowFlow -= Math.PI * 2;
+      
+      // global soft pulse that modulates scale and text-shadow slightly - adds living feel
+      globalPulse += 0.012;
+      let pulseFactor = 0.85 + Math.sin(globalPulse) * 0.07;   // gentle global micro-breathing
+      
+      // iterate over each heart point to compute smooth opacity + glow + scale
+      for (let i = 0; i < elementsList.length; i++) {
+        const item = elementsList[i];
+        const el = item.el;
+        const angle = item.angle;
+        
+        // Get main intensity (0..1) from our pure cosine falloff model
+        let intensity = computeIntensity(angle, glowFlow);
+        
+        // Add subtle micro-oscillation based on angle and sin(time) for organic shimmer
+        // but not overriding the main flow, just adding lively sparkle (smooth)
+        let microGlint = 0.12 * (Math.sin(angle * 2.4 + globalPulse * 1.7) * 0.5 + 0.5);
+        let finalIntensity = Math.min(1.0, intensity + microGlint * 0.2);
+        
+        // Opacity literally disappears when intensity hits 0 - completely smooth transition
+        let opacityValue = finalIntensity;
+        el.style.opacity = opacityValue;
+        
+        // Glow intensity mapping: create vibrant pink/red glow that pulses with intensity
+        let glowBase = 6;
+        let glowIntensityRadius = glowBase + finalIntensity * 26;  // from soft to brilliant
+        // Add a slight hue variation: richer glow at high intensity
+        let r = 255;
+        let g = 70 + Math.floor(finalIntensity * 80);
+        let b = 110 + Math.floor(finalIntensity * 60);
+        
+        // Text shadow: multiple layers create volumetric glow with smoother transition
+        if (finalIntensity > 0.05) {
+          let coreGlow = finalIntensity * 12;
+          let midGlow = finalIntensity * 18;
+          let outerGlow = finalIntensity * 24;
+          el.style.textShadow = `0 0 ${coreGlow}px rgba(255, 70, 130, ${finalIntensity * 0.8}),
+                                   0 0 ${midGlow}px rgba(255, 50, 110, ${finalIntensity * 0.6}),
+                                   0 0 ${outerGlow}px rgba(255, 30, 100, ${finalIntensity * 0.4})`;
+        } else {
+          el.style.textShadow = `0 0 2px rgba(255,80,130,0.1)`;
+        }
+        
+        // scale transformation: gentle pulse / zoom based on intensity + global breathing
+        // more prominent at the wave front gives dynamic motion
+        let scaleFactor = 0.92 + finalIntensity * 0.24;
+        // add tiny synchronous heartbeat wobble for each element (creates shimmering)
+        let breathScale = 1 + Math.sin(globalPulse * 2.2 + angle) * 0.02;
+        let finalScale = scaleFactor * breathScale * pulseFactor;
+        // Clamp to reasonable range
+        finalScale = Math.min(1.25, Math.max(0.85, finalScale));
+        el.style.transform = `translate(-50%, -50%) scale(${finalScale})`;
+        
+        // subtle color transition based on intensity (warm white-pink at peak)
+        if (finalIntensity > 0.7) {
+          el.style.color = `rgb(255, 130, 170)`;
+          el.style.fontWeight = '600';
+        } else if (finalIntensity > 0.35) {
+          el.style.color = `rgb(255, 100, 145)`;
+          el.style.fontWeight = '500';
+        } else {
+          el.style.color = `rgb(255, 70, 120)`;
+          el.style.fontWeight = '400';
+        }
+      }
+      
+      // enhance container atmosphere: dynamic background shadow pulse
+      const pulseGlow = 0.3 + Math.sin(globalPulse * 1.9) * 0.15;
+      container.style.filter = `drop-shadow(0 0 ${8 + pulseGlow * 12}px rgba(255, 50, 120, 0.5))`;
+      
+      requestAnimationFrame(animate);
+    }
+    
+    // start animation
+    requestAnimationFrame(animate);
+    
+    // small initial phase for a beautiful start
+    glowFlow = 1.2;
+    
+    // Pre-warm: ensure smooth transitions
+    setTimeout(() => {
+      elementsList.forEach(item => {
+        item.el.style.transition = 'opacity 0.03s linear, text-shadow 0.03s ease-out, transform 0.05s ease-out';
+      });
+    }, 50);
+    
+    // add fallback for high DPI and ensure smoothness
+    const style = document.createElement('style');
+    style.textContent = `
+      .word {
+        transition: opacity 0.03s linear, transform 0.05s cubic-bezier(0.2, 0.9, 0.4, 1), text-shadow 0.03s ease-out;
+        letter-spacing: 0.3px;
+      }
+      @media (prefers-reduced-motion: no-preference) {
+        .container {
+          animation: softHeartbeat 3.5s infinite ease-in-out;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+  })();
+</script>
+</body>
+</html>
